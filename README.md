@@ -13,7 +13,7 @@ instances, regenerating fresh HAProxy config every minute or so,
 depending on your needs.
 
 ```bash
-$ python haproxy_autoscale.py --help
+$ ./haproxy_autoscale.py --help
 usage: haproxy_autoscale.py [-h] [-t TEMPLATE] [-o OUTPUT] asgname
 
 Auto-scaling HAProxy configuration.
@@ -23,6 +23,8 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  --region REGION       The AWS region from which to fetch ASG instances.
+                        Defaults to fetching region from instance metadata.
   -t TEMPLATE, --template TEMPLATE
                         Path to haproxy template file -- replaces ${vars}.
   -o OUTPUT, --output OUTPUT
