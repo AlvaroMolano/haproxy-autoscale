@@ -30,12 +30,10 @@ def get_private_ips_for_asg(asg_name, region):
 
     # Get private IPs for those instances
     instances = get_instances_by_id(instance_ids, region=region)
-    ips = filter(bool, map(lambda i: i.private_ip_address, instances))
+    return filter(bool, map(lambda i: (i.id, i.private_ip_address), instances))
 
-    return ips
-
-def format_ips_as_haproxy_config_lines(ips, server_template):
-    formatted_lines = [server_template % (i, ip) for (i, ip) in enumerate(ips)]
+def format_instances_as_haproxy_config_lines(instances, server_template):
+    formatted_lines = [server_template % (i, ip) for (i, ip) in instances]
     return formatted_lines
 
 def generate_config(tpl_source, **kwargs):
@@ -52,6 +50,18 @@ def get_region_from_instance_meta():
         print >> sys.stderr, "[error] Unable to fetch instance metadata. If you are not running this on an EC2 instance, you need to supply the --region command line argument."
         sys.exit(1)
 
+def write_config(instances, template_file, output_file):
+    # Generate haproxy `server` lines
+    server_template = "server %s %s:8443 check port 8000"
+    server_lines = format_instances_as_haproxy_config_lines(instances, server_template)
+
+    # Interpolate the formatted `server` lines into the config template
+    servers = "\n  ".join(server_lines)
+    config = generate_config(template_file.read(), servers=servers)
+
+    output_file.write(config)
+    output_file.close()
+
 if __name__ == '__main__':
     import argparse, sys
     parser = argparse.ArgumentParser(description="Auto-scaling HAProxy configuration.")
@@ -66,16 +76,10 @@ if __name__ == '__main__':
     else:
         region = get_region_from_instance_meta()
 
-    # Fetch IPs for the given auto-scaling group
-    ips = get_private_ips_for_asg(args.asgname, region=region)
+    # Fetch IPs for the given auto-scaling group and write it to file
+    instances = get_private_ips_for_asg(args.asgname, region=region)
 
-    # Generate haproxy `server` lines
-    server_template = "server ws-server-%02d %s:8443 check port 8000"
-    server_lines = format_ips_as_haproxy_config_lines(ips, server_template)
 
-    # Interpolate the formatted `server` lines into the config template
-    servers = "\n  ".join(server_lines)
-    config = generate_config(args.template.read(), servers=servers)
+    # Actually write out the new config if everything went ok
+    write_config(instances, args.template, args.output)
 
-    args.output.write(config)
-    args.output.close()
