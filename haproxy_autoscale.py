@@ -132,10 +132,9 @@ if __name__ == '__main__':
     else:
         region = get_region_from_instance_meta()
 
-    # Fetch IPs for the given auto-scaling group and write it to file
+    # Fetch tuples of (instance_id, private_ip) for the given auto-scaling group
     instances = get_private_ips_for_asg(args.asgname, region=region)
 
-    # Get unhealthy instance ids from HAProxy admin socket
     try:
         unhealthy_instance_ids = get_unhealthy_instance_ids_from_haproxy_socket(args.socket)
         mark_instances_as_unhealthy(unhealthy_instance_ids, region)
