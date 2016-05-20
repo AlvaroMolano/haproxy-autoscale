@@ -15,6 +15,10 @@ def get_instances_by_id(instance_ids, region):
     ec2 = boto3.resource('ec2', region_name=region)
     return ec2.instances.filter(InstanceIds=instance_ids)
 
+def mark_instance_as_unhealthy(instance_id, region):
+    asg = boto3.client('autoscaling', region_name=region)
+    asg.set_instance_health(InstanceId=instance_id, HealthStatus="Unhealthy", ShouldRespectGracePeriod=True)
+
 def get_asg_instances(asg_name, region):
     asg = boto3.client('autoscaling', region_name=region)
     all_instances = asg.describe_auto_scaling_instances()['AutoScalingInstances']
@@ -62,13 +66,65 @@ def write_config(instances, template_file, output_file):
     output_file.write(config)
     output_file.close()
 
+
+HAP_BUFSIZE = 8192
+class HASocket:
+    def __init__(self, socket_filename):
+        self.socket_filename = socket_filename
+
+    def __enter__(self):
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.socket.settimeout(3)
+        self.socket.connect(self.socket_filename)
+        return self
+
+    def __exit__(self, exception_type, exception_value, traceback):
+        self.socket.close()
+
+    def call(self, cmd):
+        # Send the command
+        self.socket.sendall(cmd + "\r\n")
+
+        # Receive the response
+        output = ""
+        while True:
+            response = self.socket.recv(HAP_BUFSIZE)
+            if not response:
+                break
+
+            output += response.decode('ASCII')
+
+        return output
+
+def get_instance_id_and_health(server_state_line):
+    server_state = server_state_line.strip().split(" ")
+    return (server_state[3], int(server_state[5]) != 0)
+
+def get_unhealthy_instance_ids(servers_state):
+    servers = filter(bool, servers_state.split("\n"))
+    instance_id_and_health_tuples = map(get_instance_id_and_health, servers)
+    unhealthy_instances = filter(lambda (server_id, healthy): not healthy, instance_id_and_health_tuples)
+    unhealthy_instance_ids = map(lambda (name, _): name, unhealthy_instances)
+    return unhealthy_instance_ids
+
+def get_unhealthy_instance_ids_from_haproxy_socket(socket_filename):
+    # Get health for each current haproxy server instance
+    with HASocket(socket_filename) as ha:
+        servers_state = ha.call('show servers state servers')
+        return get_unhealthy_instance_ids(servers_state)
+
+def mark_instances_as_unhealthy(instance_ids, region):
+    for instance_id in instance_ids:
+        mark_instance_as_unhealthy(instance_id, region)
+
 if __name__ == '__main__':
-    import argparse, sys
+    import argparse, sys, os
     parser = argparse.ArgumentParser(description="Auto-scaling HAProxy configuration.")
     parser.add_argument('asgname', help='The name that the auto-scaling group starts with.')
     parser.add_argument('--region', help='The AWS region from which to fetch ASG instances. Defaults to fetching region from instance metadata.')
     parser.add_argument('-t', '--template', type=file, default='/etc/haproxy/haproxy.cfg.tpl', help='Path to haproxy template file -- replaces ${vars}.')
     parser.add_argument('-o', '--output', type=argparse.FileType('w'), default=sys.stdout, help='Path to output file. Default: stdout.')
+    parser.add_argument('-s', '--socket', default='/run/haproxy/admin.sock', help='Path to HAProxy admin socket.')
     args = parser.parse_args()
 
     if args.region:
@@ -79,6 +135,9 @@ if __name__ == '__main__':
     # Fetch IPs for the given auto-scaling group and write it to file
     instances = get_private_ips_for_asg(args.asgname, region=region)
 
+    # Get unhealthy instance ids from HAProxy admin socket
+    unhealthy_instance_ids = get_unhealthy_instance_ids_from_haproxy_socket(args.socket)
+    mark_instances_as_unhealthy(unhealthy_instance_ids, region)
 
     # Actually write out the new config if everything went ok
     write_config(instances, args.template, args.output)
