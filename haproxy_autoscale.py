@@ -136,8 +136,11 @@ if __name__ == '__main__':
     instances = get_private_ips_for_asg(args.asgname, region=region)
 
     # Get unhealthy instance ids from HAProxy admin socket
-    unhealthy_instance_ids = get_unhealthy_instance_ids_from_haproxy_socket(args.socket)
-    mark_instances_as_unhealthy(unhealthy_instance_ids, region)
+    try:
+        unhealthy_instance_ids = get_unhealthy_instance_ids_from_haproxy_socket(args.socket)
+        mark_instances_as_unhealthy(unhealthy_instance_ids, region)
+    except socket.error:
+        print("Unable to connect to haproxy socket at (%s)" % args.socket)
 
     # Actually write out the new config if everything went ok
     write_config(instances, args.template, args.output)
