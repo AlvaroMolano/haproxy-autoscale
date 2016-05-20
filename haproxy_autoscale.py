@@ -115,7 +115,10 @@ def get_unhealthy_instance_ids_from_haproxy_socket(socket_filename):
 
 def mark_instances_as_unhealthy(instance_ids, region):
     for instance_id in instance_ids:
-        mark_instance_as_unhealthy(instance_id, region)
+        try:
+            mark_instance_as_unhealthy(instance_id, region)
+        except Exception as e:
+            print("Unable to mark instance %s as unhealthy: %s" % (instance_id, e))
 
 if __name__ == '__main__':
     import argparse, sys, os
