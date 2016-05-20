@@ -101,7 +101,7 @@ def get_instance_id_and_health(server_state_line):
     return (server_state[3], int(server_state[5]) != 0)
 
 def get_unhealthy_instance_ids(servers_state):
-    servers = filter(bool, servers_state.split("\n"))
+    servers = filter(bool, servers_state.strip().split("\n"))
     instance_id_and_health_tuples = map(get_instance_id_and_health, servers)
     unhealthy_instances = filter(lambda (server_id, healthy): not healthy, instance_id_and_health_tuples)
     unhealthy_instance_ids = map(lambda (name, _): name, unhealthy_instances)
