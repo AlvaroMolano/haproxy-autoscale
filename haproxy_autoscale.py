@@ -30,7 +30,7 @@ def get_private_ips_for_asg(asg_name, region):
 
     # Get private IPs for those instances
     instances = get_instances_by_id(instance_ids, region=region)
-    ips = map(lambda i: i.private_ip_address, instances)
+    ips = filter(bool, map(lambda i: i.private_ip_address, instances))
 
     return ips
 
