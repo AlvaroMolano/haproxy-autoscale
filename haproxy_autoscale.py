@@ -11,8 +11,8 @@ from string import Template
 def instance_in_asg_starting_with(asg_name):
     return lambda instance: instance['AutoScalingGroupName'].startswith(asg_name)
 
-def get_instances_by_id(instance_ids):
-    ec2 = boto3.resource('ec2')
+def get_instances_by_id(instance_ids, region):
+    ec2 = boto3.resource('ec2', region_name=region)
     return ec2.instances.filter(InstanceIds=instance_ids)
 
 def get_asg_instances(asg_name, region):
@@ -29,7 +29,7 @@ def get_private_ips_for_asg(asg_name, region):
     instance_ids = map(lambda i: i['InstanceId'], operational_instances)
 
     # Get private IPs for those instances
-    instances = get_instances_by_id(instance_ids)
+    instances = get_instances_by_id(instance_ids, region=region)
     ips = map(lambda i: i.private_ip_address, instances)
 
     return ips
